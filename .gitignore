@@ -1,0 +1,11 @@
+lecture*
+raw_audio*
+transcript*
+.env
+__pycache__
+venv/
+lecture_venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
