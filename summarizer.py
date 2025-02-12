@@ -103,19 +103,51 @@ def create_summary() -> str:
     summary = response['message']['content']
     return(summary)
 
+def parse_output(text:str) -> list[tuple]:
+    parsed = []
+    for line in text.split("\n"):
+        line = line.strip()
+
+        if not line:
+            parsed.append(("blank",""))
+
+        if line.startswith("**") and line.endswith("**"):
+            heading = line.strip("*")
+            parsed.append(("heading", heading))
+        
+        elif line.startswith("*"):
+            bullet = line.lstrip("*")
+            parsed.append(("bullet", bullet))
+        
+        else:
+            parsed.append("text", line)
+
+    print("parsed output")
+
+    return parsed
+
 def create_doc(summary: str) -> str:
 
+    parsed_summary = parse_output(summary)
     doc_path = os.getenv("DOC_PATH") + f"lecture_{today}.docx"
 
     doc = Document()
 
     doc.add_heading(f'Lecture Summary from {today.strftime("%B %d, %Y")}', level=1)
+    for format_type, content in parsed_summary:
+        if format_type == "blank":
+            doc.add_paragraph("")
 
-    code_paragraph = doc.add_paragraph()
-    code_paragraph.alignment = 0  # left align
-    code_run = code_paragraph.add_run(summary)
-    code_paragraph.style = 'Normal'
-    code_run.font.size = Pt(11)
+        elif format_type == "heading":
+            doc.add_heading(content, level=3)
+
+        elif format_type == "bullet":
+            doc.add_paragraph(content, style="ListBullet")
+
+        else:
+            doc.add_paragraph(content)
+
+
     doc.save(doc_path)
     return doc_path
 
