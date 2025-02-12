@@ -1,6 +1,8 @@
 lecture*
 raw_audio*
 transcript*
+transcripts/
+audio/
 .env
 __pycache__
 venv/

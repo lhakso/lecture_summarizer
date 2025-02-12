@@ -6,10 +6,10 @@ import threading
 
 class RecordingSession:
 
-    def __init__(self, sample_rate=41000, dtype=np.int16, duration=60, today=None):
+    def __init__(self, sample_rate=41000, dtype=np.float32, duration=3600, today=None):
         self.sample_rate: int = sample_rate
         self.dtype: np.dtype = dtype
-        self.output_file: str = f"raw_audio{today}.wav" 
+        self.output_file: str = f"audio/raw_audio{today}.wav" 
         self.audio_buffer: np.ndarray = np.zeros((sample_rate * duration, 1), dtype=dtype)
         self.index: int = 0
         self.recording: bool = True 
@@ -32,8 +32,6 @@ class RecordingSession:
         self.index += frames
 
     def start_record(self):
-
-        print("started recording, press Esc to stop")
 
         stopper_thread = threading.Thread(target=self.wait_for_stop)
         stopper_thread.start()
