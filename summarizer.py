@@ -11,11 +11,12 @@ import smtplib
 from email.message import EmailMessage
 from recorder import RecordingSession
 import os
+from tqdm import tqdm
 from dotenv import load_dotenv
 
 load_dotenv()
 today = date.today()
-target_word_count = "1500"
+target_word_count = "1200"
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVERS = os.getenv("EMAIL_RECEIVERS")
@@ -42,6 +43,29 @@ def entry():
     finally:
         ollama_process.terminate()
         print("ollama server stopped.")
+
+    
+def split_into_sections(transcript: str) -> list:
+    num_sections = 5
+    words_per_section = len(transcript.split(" "))//num_sections
+    sentences = transcript.split(".")
+    sections = []
+    current_section = []
+    word_count = 0
+
+    for sentence in sentences:
+        current_section.append(sentence + ".")
+        word_count += len(sentence.split())
+
+        if word_count >= words_per_section:
+            sections.append(" ".join(current_section))
+            current_section = []
+            word_count = 0
+        
+    if current_section:
+        sections.append(" ".join(current_section))
+
+    return sections
 
 def clean_filler_words(text: str) -> str:
     fillers = ["um", "uh", "you know", "like", "kind of", "sort of", "I mean"]
@@ -73,7 +97,7 @@ def send_email(path: Path) -> None:
         smtp.send_message(msg)
     print("successfully sent email")
 
-def create_summary() -> str:
+def transcribe_and_clean():
     file = Path(f'transcripts/transcript{today}.txt')
 
     if not file.exists():
@@ -88,19 +112,42 @@ def create_summary() -> str:
     else:
         print("skipped transcribe")
         with open(f"transcripts/transcript{today}.txt", "r") as file:
-            transcript = file.read() 
-
-
+            transcript = file.read()
+    
     cleaned_transcript = clean_filler_words(transcript)
-    print("cleaned transcript")
-    response = ollama.chat(
-    model='llama3:70b',
-    #adjust message prompt as desired - second commented one is for testing
-    messages=[{'role': 'user', 'content': f'Please summarize the following lecture transcript into a comprehensive note-style summary that is approximately {target_word_count} words long. The summary should use a mixed format:\nBullet Points: Use bullet points to list the key ideas, main topics, and critical concepts from the lecture. Each bullet point should be concise and capture the essential information.\nExplanatory Paragraphs: In addition to the bullet points, include paragraphs that provide additional context, elaborate on the bullet points, and explain examples or complex ideas in detail.\n\nYour summary should be organized, clear, and easy to scan, enabling quick reference while still offering enough detail for deep understanding. Ensure that the overall structure is logical—group related bullet points together, and follow them with paragraphs that discuss those points in more detail. \nHere is the lecture transcript:\n{cleaned_transcript}\nGenerate a summary that captures all major points and presents the material in a structured, readable note-style format."'}],
-    #messages=[{'role': 'user', 'content':f"please summarize this shortly: \n{cleaned_transcript}"}],
-    stream=False,
-    )
-    summary = response['message']['content']
+
+    return cleaned_transcript
+
+
+def create_summary() -> str:
+    cleaned_transcript = transcribe_and_clean()
+    split_transcript = split_into_sections(cleaned_transcript)
+    print("cleaned and split transcript")
+
+    summary = ""
+    for section_index, section in enumerate(tqdm(split_transcript, desc="Summarizing Sections", unit="section")):
+        section_prompt = f"""
+        Previous sections written so far:\n{summary}
+
+        Now summarize the next part of the lecture in detail.
+        - If there is a switch in topic from the previous section, include section header to indicate major topic.  
+        - Do NOT introduce sections with unnecessary text like "Here is a summary."
+        - Avoid phrases like "the professor said" and focus on the content.
+
+        Here is the next section:
+
+        {section}
+"""
+
+        response = ollama.chat(
+        model='my-llama3-70b',
+        #adjust message prompt as desired - second commented one is for testing
+        messages=[{'role': 'user', 'content': section_prompt}],
+        #messages=[{'role': 'user', 'content':f"please summarize this shortly: \n{cleaned_transcript}"}],
+        stream=False,
+        )
+        summary += response['message']['content'] + "\n"
+        print(f"section {section_index+1} done\n")
     return(summary)
 
 def parse_output(text:str) -> list[tuple]:
@@ -120,7 +167,7 @@ def parse_output(text:str) -> list[tuple]:
             parsed.append(("bullet", bullet))
         
         else:
-            parsed.append("text", line)
+            parsed.append(("text", line))
 
     print("parsed output")
 

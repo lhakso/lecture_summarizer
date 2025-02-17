@@ -1,0 +1,3 @@
+FROM llama3:70b
+
+PARAMETER num_predict 4000
