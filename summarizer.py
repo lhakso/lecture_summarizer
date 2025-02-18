@@ -21,6 +21,7 @@ EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVERS = os.getenv("EMAIL_RECEIVERS")
 
+
 def entry():
     record_new = input("do you want to record a new lecture? y/n\n")
 
@@ -31,10 +32,12 @@ def entry():
         session.start_record()
 
     # start ollama in background
-    ollama_process = subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ollama_process = subprocess.Popen(
+        ["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
     print("ollama server started!")
     time.sleep(2)  # give time to initialize
-    
+
     try:
         summary = create_summary()
         path = create_doc(summary)
@@ -44,10 +47,10 @@ def entry():
         ollama_process.terminate()
         print("ollama server stopped.")
 
-    
+
 def split_into_sections(transcript: str) -> list:
-    num_sections = 5
-    words_per_section = len(transcript.split(" "))//num_sections
+    num_sections = 4
+    words_per_section = len(transcript.split(" ")) // num_sections
     sentences = transcript.split(".")
     sections = []
     current_section = []
@@ -61,17 +64,19 @@ def split_into_sections(transcript: str) -> list:
             sections.append(" ".join(current_section))
             current_section = []
             word_count = 0
-        
+
     if current_section:
         sections.append(" ".join(current_section))
 
     return sections
 
+
 def clean_filler_words(text: str) -> str:
     fillers = ["um", "uh", "you know", "like", "kind of", "sort of", "I mean"]
-    pattern = r'\s*\b(?:' + '|'.join(fillers) + r')[,.\s]*\b'
-    cleaned_text = re.sub(pattern, ' ', text, flags=re.IGNORECASE)
+    pattern = r"\s*\b(?:" + "|".join(fillers) + r")[,.\s]*\b"
+    cleaned_text = re.sub(pattern, " ", text, flags=re.IGNORECASE)
     return cleaned_text
+
 
 def send_email(path: Path) -> None:
     email_sender = EMAIL_SENDER
@@ -85,25 +90,26 @@ def send_email(path: Path) -> None:
     msg["To"] = email_receivers
     msg.set_content(f"Notes for {today.strftime("%B %d, %Y")} lecture")
 
-    with open(file_path, 'rb') as file:
-        msg.add_attachment(    
-        file.read(),
-        maintype="application",
-        subtype="vnd.openxmlformats-officedocument.wordprocessingml.document",
-        filename=file_path.name)
+    with open(file_path, "rb") as file:
+        msg.add_attachment(
+            file.read(),
+            maintype="application",
+            subtype="vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=file_path.name,
+        )
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(email_sender, email_password)
         smtp.send_message(msg)
     print("successfully sent email")
 
+
 def transcribe_and_clean():
-    file = Path(f'transcripts/transcript{today}.txt')
+    file = Path(f"transcripts/transcript{today}.txt")
 
     if not file.exists():
         transcript = mlx_whisper.transcribe(
-            f"audio/raw_audio{today}.wav",
-            path_or_hf_repo="mlx-community/whisper-turbo"
+            f"audio/raw_audio{today}.wav", path_or_hf_repo="mlx-community/whisper-turbo"
         )["text"]
 
         with open(f"transcripts/transcript{today}.txt", "w") as file:
@@ -113,7 +119,7 @@ def transcribe_and_clean():
         print("skipped transcribe")
         with open(f"transcripts/transcript{today}.txt", "r") as file:
             transcript = file.read()
-    
+
     cleaned_transcript = clean_filler_words(transcript)
 
     return cleaned_transcript
@@ -125,7 +131,9 @@ def create_summary() -> str:
     print("cleaned and split transcript")
 
     summary = ""
-    for section_index, section in enumerate(tqdm(split_transcript, desc="Summarizing Sections", unit="section")):
+    for section_index, section in enumerate(
+        tqdm(split_transcript, desc="Summarizing Sections", unit="section")
+    ):
         section_prompt = f"""
         Previous sections written so far:\n{summary}
 
@@ -140,38 +148,40 @@ def create_summary() -> str:
 """
 
         response = ollama.chat(
-        model='my-llama3-70b',
-        #adjust message prompt as desired - second commented one is for testing
-        messages=[{'role': 'user', 'content': section_prompt}],
-        #messages=[{'role': 'user', 'content':f"please summarize this shortly: \n{cleaned_transcript}"}],
-        stream=False,
+            model="my-llama3-70b",
+            # adjust message prompt as desired - second commented one is for testing
+            messages=[{"role": "user", "content": section_prompt}],
+            # messages=[{'role': 'user', 'content':f"please summarize this shortly: \n{cleaned_transcript}"}],
+            stream=False,
         )
-        summary += response['message']['content'] + "\n"
+        summary += response["message"]["content"]
         print(f"section {section_index+1} done\n")
-    return(summary)
+    return summary
 
-def parse_output(text:str) -> list[tuple]:
+
+def parse_output(text: str) -> list[tuple]:
     parsed = []
     for line in text.split("\n"):
         line = line.strip()
 
         if not line:
-            parsed.append(("blank",""))
+            parsed.append(("blank", ""))
 
         if line.startswith("**") and line.endswith("**"):
             heading = line.strip("*")
             parsed.append(("heading", heading))
-        
+
         elif line.startswith("*"):
             bullet = line.lstrip("*")
             parsed.append(("bullet", bullet))
-        
+
         else:
             parsed.append(("text", line))
 
     print("parsed output")
 
     return parsed
+
 
 def create_doc(summary: str) -> str:
 
@@ -194,9 +204,9 @@ def create_doc(summary: str) -> str:
         else:
             doc.add_paragraph(content)
 
-
     doc.save(doc_path)
     return doc_path
+
 
 if __name__ == "__main__":
     entry()
